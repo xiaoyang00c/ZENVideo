@@ -1,0 +1,42 @@
+//
+//  BBRobot-Prefix.pch
+//  BBRobot
+//
+//  Created by Andy on 15-1-13.
+//  Copyright (c) 2015年 Andy. All rights reserved.
+//
+
+#ifndef VirtualLover_VirtualLover_Prefix_pch
+#define VirtualLover_VirtualLover_Prefix_pch
+
+// Include any system framework and library headers here that should be included in all compilation units.
+// You will also need to set the Prefix Header build setting of one or more of your targets to reference this file.
+
+#endif
+
+
+#ifdef __OBJC__
+    #import <UIKit/UIKit.h>
+    #import <Foundation/Foundation.h>
+    #import "UINavigationController+FDFullscreenPopGesture.h"
+    #import "AppDelegate.h"
+    #import "SHAppDelegateManager.h"
+    #import "SHColorFontDefine.h"
+    #import "Commen.h"
+    #import "CommonClass.h"
+    #import "HexColor.h"
+    #import "PureLayout.h"
+    #import "MBProgressHUD.h"
+    #import "MBProgressHUD+Add.h"
+    #import "UIImage+Mycategory.h"
+    #import "MJRefresh.h"
+    #import "UIImageView+AFNetworking.h"
+    #import "UIImageView+WebCache.h"
+    #import "Masonry.h"
+    #import "JSONModel.h"
+#import "FTAnimation.h"
+
+#import "BFNormalHeader.h"
+#import "BBRGIFHeader.h"
+
+#endif
