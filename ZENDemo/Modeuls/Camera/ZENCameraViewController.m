@@ -47,8 +47,7 @@
 }
 
 - (void)loadData {
-    
-    self.titles = [NSArray arrayWithObjects:@"基本合成",@"水印(遮罩)",@"水印动效", nil];
+    self.titles = [NSArray arrayWithObjects:@"基本合成",@"水印",@"水印动效",@"视频渐显",@"右侧推进",@"视频剪裁(未完成）",@"视频放大(未完成）", nil];
     [self.tableView reloadData];
 }
 
