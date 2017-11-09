@@ -10,6 +10,6 @@
 
 @interface ZENVideoEditViewController : BBBaseViewController
 
-@property (nonatomic,copy) NSString *videoURL;
+@property (nonatomic,strong) NSURL *videoURL;
 
 @end
