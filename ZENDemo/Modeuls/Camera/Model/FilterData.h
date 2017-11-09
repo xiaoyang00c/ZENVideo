@@ -9,5 +9,9 @@
 #import <JSONModel/JSONModel.h>
 
 @interface FilterData : JSONModel
-
+@property (nonatomic,copy) NSString* name;
+@property (nonatomic,copy) NSString* value;
+@property (nonatomic,copy) NSString* fillterName;
+@property (nonatomic,copy) NSString* iconPath;
+@property (nonatomic,assign) BOOL isSelected;
 @end

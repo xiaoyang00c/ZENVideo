@@ -13,6 +13,10 @@ typedef NS_ENUM(NSUInteger,ZENCameraEffType){
     ZENCameraEffType_None = 0,
     ZENCameraEffType_WaterMark,
     ZENCameraEffType_WaterMarkAnimation,
+    ZENCameraEffType_VideoOpacity,
+    ZENCameraEffType_VideoPushFromRight,
+    ZENCameraEffType_VideoCrop,
+    ZENCameraEffType_VideoZoomOut,
 };
 
 

@@ -766,8 +766,8 @@ static CVReturn renderCallback(CVDisplayLinkRef displayLink,
     
     if (_runBenchmark)
     {
-        CFAbsoluteTime currentFrameTime = (CFAbsoluteTimeGetCurrent() - startTime);
-        NSLog(@"Current frame time : %f ms", 1000.0 * currentFrameTime);
+//        CFAbsoluteTime currentFrameTime = (CFAbsoluteTimeGetCurrent() - startTime);
+//        NSLog(@"Current frame time : %f ms", 1000.0 * currentFrameTime);
     }
 }
 

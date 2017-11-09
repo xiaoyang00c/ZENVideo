@@ -18,6 +18,8 @@
 
 
 
+#define degreesToRadians( degrees ) ( ( degrees ) / 180.0 * M_PI )
+
 #define LOCALVideoFILEPATH       [NSHomeDirectory() stringByAppendingPathComponent:@"Documents/video"]
 
 @interface AlbumVideoViewController ()<CHTCollectionViewDelegateWaterfallLayout,UICollectionViewDataSource>
@@ -60,6 +62,8 @@
 - (AVMutableVideoComposition*)videoComp {
     if (!_videoComp) {
         _videoComp = [AVMutableVideoComposition videoComposition];
+        _videoComp.frameDuration = CMTimeMake(1, 30);
+        _videoComp.renderScale = 1.0;
     }
     return _videoComp;
 }
@@ -97,14 +101,23 @@
         return;
     }
     
+    [MBProgressHUD showMessag:@"正在合成" toView:self.navigationController.view];
+
     AVMutableComposition *mixComposition = [[AVMutableComposition alloc] init];
     //合成音频轨道
     AVMutableCompositionTrack *audioTrack = [mixComposition addMutableTrackWithMediaType:AVMediaTypeAudio preferredTrackID:kCMPersistentTrackID_Invalid];
     //合成视频轨道
     AVMutableCompositionTrack *videoTrack = [mixComposition addMutableTrackWithMediaType:AVMediaTypeVideo preferredTrackID:kCMPersistentTrackID_Invalid];
     
-    Float64 tmpDuration = 0.0f;
+    [self videoComp];
+    
+    CMTime totalDuration = kCMTimeZero;
+    NSMutableArray *videoLayerInstructions = [NSMutableArray array];
+
+    NSUInteger i = 0;
     for (NSIndexPath *indexPath in selectedArray) {
+        
+        
         NSURL *url = [self.assets[indexPath.row] valueForProperty:ALAssetPropertyAssetURL];
         AVAsset *asset = [AVAsset assetWithURL:url];
         if (!asset) {
@@ -116,17 +129,113 @@
         // audio 插入到 AVMutableCompositionTrack
         [audioTrack insertTimeRange:video_timeRange
                             ofTrack:[[asset tracksWithMediaType:AVMediaTypeAudio] objectAtIndex:0]
-                             atTime:CMTimeMakeWithSeconds(tmpDuration, 0)
+                             atTime:totalDuration
                               error:nil];
 
         //video 插入到 AVMutableCompositionTrack
         [videoTrack insertTimeRange:video_timeRange
                             ofTrack:[[asset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0]
-                             atTime:CMTimeMakeWithSeconds(tmpDuration, 0)
+                             atTime:totalDuration
                               error:nil];
-        tmpDuration += CMTimeGetSeconds(asset.duration);
+        
+        
+        CGSize videoSize = videoTrack.naturalSize;
+        AVAssetTrack *videoTrack1 = [[asset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
+        CGAffineTransform t = videoTrack1.preferredTransform;
+        if((t.a == 0 && t.b == 1.0 && t.c == -1.0 && t.d == 0) ||
+           (t.a == 0 && t.b == -1.0 && t.c == 1.0 && t.d == 0)){
+            videoSize = CGSizeMake(videoSize.height, videoSize.width);
+        }
+        mixComposition.naturalSize = videoSize;
+        _videoComp.renderSize = videoSize;
+
+        AVMutableVideoCompositionInstruction* compositionInstruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
+        compositionInstruction.timeRange = CMTimeRangeMake(totalDuration, asset.duration);
+        
+        AVMutableVideoCompositionLayerInstruction* layerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:videoTrack];
+        //此处可定义多个AVMutableVideoCompositionLayerInstruction动画,用来做动画衔接
+        //动画放至此 compositionInstruction.layerInstructions = @【动画123】
+        Float64 assetDuration = CMTimeGetSeconds(asset.duration);
+        Float64 totalDurationF = CMTimeGetSeconds(totalDuration);
+        
+        if ( _type <= ZENCameraEffType_WaterMarkAnimation) {
+            if (_type > ZENCameraEffType_None) {
+                
+//                UIImage* waterImg = [UIImage imageNamed:@"waterMark"];
+                CGSize videoSize = _videoComp.renderSize;
+                //添加水印
+                CATextLayer *subtitle1Text = [[CATextLayer alloc] init];
+                [subtitle1Text setFont:@"Helvetica-Bold"];
+                [subtitle1Text setFontSize:30];
+                [subtitle1Text setFrame:CGRectMake(0, 0, videoSize.width/2, videoSize.height/4)];
+                [subtitle1Text setString:@"我是水印"];
+                [subtitle1Text setAlignmentMode:kCAAlignmentCenter];
+                [subtitle1Text setForegroundColor:[[UIColor whiteColor] CGColor]];
+                
+                CALayer* aLayer = [CALayer layer];
+                [aLayer addSublayer:subtitle1Text];
+                aLayer.frame = CGRectMake (videoSize.width/4, videoSize.height*3/4, videoSize.width/2, videoSize.height/4);
+                [aLayer setMasksToBounds:YES];
+                
+                CALayer *parentLayer = [CALayer layer];
+                CALayer *videoLayer = [CALayer layer];
+                parentLayer.frame = CGRectMake(0, 0, videoSize.width, videoSize.height);
+                videoLayer.frame = CGRectMake(0, 0, videoSize.width, videoSize.height);
+                [parentLayer addSublayer:videoLayer];
+                [parentLayer addSublayer:aLayer];
+                
+                if (_type == ZENCameraEffType_WaterMarkAnimation) {
+                    
+                    //水印动画
+                    CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:@"opacity"];
+                    [animation setDuration:0.5];
+                    [animation setFromValue:[NSNumber numberWithFloat:1.0]];
+                    [animation setToValue:[NSNumber numberWithFloat:0.2]];
+                    [animation setBeginTime:2];
+                    [animation setRepeatCount:1000000];
+                    animation.autoreverses = YES;
+                    [animation setFillMode:kCAFillModeForwards];
+                    [subtitle1Text addAnimation:animation forKey:@"animateOpacity"];
+                    
+                }
+                
+                _videoComp.animationTool = [AVVideoCompositionCoreAnimationTool videoCompositionCoreAnimationToolWithPostProcessingAsVideoLayer:videoLayer inLayer:parentLayer];
+                
+
+            }
+        }
+        else if (_type == ZENCameraEffType_VideoOpacity) {
+
+            [layerInstruction setOpacityRampFromStartOpacity:0.1f toEndOpacity:1.0f timeRange:CMTimeRangeMake(CMTimeMakeWithSeconds(totalDurationF, 30), CMTimeMakeWithSeconds( 2 + totalDurationF, 30))];
+        }
+        else if(_type == ZENCameraEffType_VideoCrop) {
+            CMTimeRange timeRange =   compositionInstruction.timeRange;
+            CGRect startRect = CGRectMake(0.0f, 0.0f, videoSize.width, videoSize.height);
+            CGRect endRect = CGRectMake(0.0f, videoSize.height, videoSize.width, 0.0f);
+            [layerInstruction setCropRectangleRampFromStartCropRectangle:startRect
+                                               toEndCropRectangle:endRect
+                                                        timeRange:timeRange];
+        }
+        else if(_type == ZENCameraEffType_VideoPushFromRight) {
+            if (i == 0 && selectedArray.count > 1) {
+                [layerInstruction setTransformRampFromStartTransform:CGAffineTransformIdentity toEndTransform:CGAffineTransformMakeTranslation(-[UIScreen mainScreen].bounds.size.width, 0) timeRange:
+                 CMTimeRangeMake(CMTimeMakeWithSeconds(assetDuration - 2 + totalDurationF, 30), CMTimeMakeWithSeconds(assetDuration - 1 + totalDurationF, 30))];
+            }else{
+//                Float64 totalDurationF = CMTimeGetSeconds(totalDuration);
+//                [layerInstruction setTransform:CGAffineTransformIdentity atTime:kCMTimeZero];
+//                [layerInstruction setTransformRampFromStartTransform:CGAffineTransformMakeTranslation([UIScreen mainScreen].bounds.size.width, 0) toEndTransform:CGAffineTransformIdentity timeRange:CMTimeRangeMake(CMTimeMakeWithSeconds(totalDurationF + 0.1, 30), CMTimeMakeWithSeconds(totalDurationF + 1.1, 30))];
+            }
+        }
+        compositionInstruction.layerInstructions = @[layerInstruction];
+        [videoLayerInstructions addObject:compositionInstruction];
+        
+        totalDuration = CMTimeAdd(totalDuration, asset.duration);
+        i++;
     }
+
+    _videoComp.instructions = videoLayerInstructions;
     
+
     NSString *cachePath = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) lastObject];
     NSString *filePath = [NSString stringWithFormat:@"%@/video",cachePath];
     BOOL isDir =NO;
@@ -137,19 +246,19 @@
     }
     
     NSTimeInterval interval = [[NSDate date] timeIntervalSince1970] * 1000;
-    NSString *fileName = [NSString stringWithFormat:@"%lf.mp4",interval];
+    NSString *fileName = [NSString stringWithFormat:@"%.0f.mp4",interval];
     NSString *videoFilePath = [filePath stringByAppendingPathComponent:fileName];
     
-    CGSize videoSize = videoTrack.naturalSize;
-
-    [self applyVideoEffectsToComposition:mixComposition size:videoSize];
     __weak typeof (&*self)weakSelf = self;
     AVAssetExportSession *exporterSession = [[AVAssetExportSession alloc] initWithAsset:mixComposition presetName:AVAssetExportPreset1280x720];
-    exporterSession.videoComposition = _videoComp;
+    exporterSession.videoComposition = self.videoComp;
     exporterSession.outputFileType = AVFileTypeQuickTimeMovie;
     exporterSession.outputURL = [NSURL fileURLWithPath:videoFilePath];//如果文件已存在，将造成导出失败
     exporterSession.shouldOptimizeForNetworkUse = YES; //用于互联网传输
     [exporterSession exportAsynchronouslyWithCompletionHandler:^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [MBProgressHUD hideHUDForView:weakSelf.navigationController.view animated:YES];
+        });
         switch (exporterSession.status) {
             case AVAssetExportSessionStatusUnknown:
                 NSLog(@"exporter Unknow");
@@ -159,6 +268,7 @@
                 break;
             case AVAssetExportSessionStatusFailed:
                 NSLog(@"exporter Failed");
+                NSLog(@"%@",exporterSession.error);
                 break;
             case AVAssetExportSessionStatusWaiting:
                 NSLog(@"exporter Waiting");
@@ -171,42 +281,17 @@
                 
                 __weak typeof (&*weakSelf)strongSelf = weakSelf;
                 dispatch_async(dispatch_get_main_queue(), ^{
+                    [MBProgressHUD showSuccess:@"合成成功" toView:weakSelf.view];
                     ZENVideoEditViewController *controller = [[ZENVideoEditViewController alloc] init];
-                    controller.videoURL = videoFilePath;
+                    controller.videoURL = [NSURL fileURLWithPath:videoFilePath];
                     [strongSelf.navigationController pushViewController:controller animated:YES];
                 });
-                
-                [self saveVideo:videoFilePath];
-                
                 break;
         }
     }];
 }
 
 
-- (void)saveVideo:(NSString *)videoPath{
-    
-    if (videoPath) {
-        
-        if (UIVideoAtPathIsCompatibleWithSavedPhotosAlbum(videoPath)) {
-            //保存相册核心代码
-            UISaveVideoAtPathToSavedPhotosAlbum(videoPath, self, @selector(video:didFinishSavingWithError:contextInfo:), nil);
-        }
-    }
-}
-
-
-//保存视频完成之后的回调
-- (void) video:(UIImage*)image didFinishSavingWithError: (NSError *)error contextInfo: (void *)contextInfo {
-    if (error) {
-        NSLog(@"保存视频失败%@", error.localizedDescription);
-        [MBProgressHUD showError:@"保存失败" toView:self.view];
-    }
-    else {
-        NSLog(@"保存视频成功");
-        [MBProgressHUD showSuccess:@"保存成功" toView:self.view];
-    }
-}
 
 - (void)collectionLayout
 {
@@ -460,98 +545,6 @@
     [super didReceiveMemoryWarning];
 }
 
-- (AVMutableVideoComposition*)applyVideoEffectsToComposition:(AVMutableComposition *)mixComposition size:(CGSize)size {
- 
-    self.videoComp.renderSize = size;
-    self.videoComp.frameDuration = CMTimeMake(1, 30);
-    if (_type == ZENCameraEffType_None) {
-        AVMutableVideoCompositionInstruction* instruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
-        instruction.timeRange = CMTimeRangeMake(kCMTimeZero, [mixComposition duration]);
-        AVAssetTrack* mixVideoTrack = [[mixComposition tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
-        AVMutableVideoCompositionLayerInstruction* layerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:mixVideoTrack];
-        instruction.layerInstructions = [NSArray arrayWithObject:layerInstruction];
-        _videoComp.instructions = [NSArray arrayWithObject: instruction];
-    }
-    else if (_type == ZENCameraEffType_WaterMark) {
-        //添加水印
-        CATextLayer *subtitle1Text = [[CATextLayer alloc] init];
-        [subtitle1Text setFont:@"Helvetica-Bold"];
-        [subtitle1Text setFontSize:20];
-        [subtitle1Text setFrame:CGRectMake(0, 0, 100, 30)];
-        [subtitle1Text setString:@"我是水印"];
-        [subtitle1Text setAlignmentMode:kCAAlignmentCenter];
-        [subtitle1Text setForegroundColor:[[UIColor whiteColor] CGColor]];
-        
-        CGSize videoSize = size;
-        CALayer* aLayer = [CALayer layer];
-        [aLayer addSublayer:subtitle1Text];
-        aLayer.frame = CGRectMake(videoSize.width - 100 - 10, videoSize.height - 30 -10, 100, 30);
-        [aLayer setMasksToBounds:YES];
-        
-        CALayer *parentLayer = [CALayer layer];
-        CALayer *videoLayer = [CALayer layer];
-        parentLayer.frame = CGRectMake(0, 0, videoSize.width, videoSize.height);
-        videoLayer.frame = CGRectMake(0, 0, videoSize.width, videoSize.height);
-        [parentLayer addSublayer:videoLayer];
-        [parentLayer addSublayer:aLayer];
-        
-        _videoComp.animationTool = [AVVideoCompositionCoreAnimationTool videoCompositionCoreAnimationToolWithPostProcessingAsVideoLayer:videoLayer inLayer:parentLayer];
-        
-        AVMutableVideoCompositionInstruction* instruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
-        instruction.timeRange = CMTimeRangeMake(kCMTimeZero, [mixComposition duration]);
-        AVAssetTrack* mixVideoTrack = [[mixComposition tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
-        AVMutableVideoCompositionLayerInstruction* layerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:mixVideoTrack];
-        instruction.layerInstructions = [NSArray arrayWithObject:layerInstruction];
-        _videoComp.instructions = [NSArray arrayWithObject: instruction];
-
-    }
-    else if (_type == ZENCameraEffType_WaterMarkAnimation) {
-        //添加水印
-        CATextLayer *subtitle1Text = [[CATextLayer alloc] init];
-        [subtitle1Text setFont:@"Helvetica-Bold"];
-        [subtitle1Text setFontSize:20];
-        [subtitle1Text setFrame:CGRectMake(0, 0, 100, 30)];
-        [subtitle1Text setString:@"我是水印"];
-        [subtitle1Text setAlignmentMode:kCAAlignmentCenter];
-        [subtitle1Text setForegroundColor:[[UIColor whiteColor] CGColor]];
-        
-        CGSize videoSize = size;
-        CALayer* aLayer = [CALayer layer];
-        [aLayer addSublayer:subtitle1Text];
-        aLayer.frame = CGRectMake(videoSize.width - 100 - 10, videoSize.height - 30 -10, 100, 30);
-        [aLayer setMasksToBounds:YES];
-        
-        CALayer *parentLayer = [CALayer layer];
-        CALayer *videoLayer = [CALayer layer];
-        parentLayer.frame = CGRectMake(0, 0, videoSize.width, videoSize.height);
-        videoLayer.frame = CGRectMake(0, 0, videoSize.width, videoSize.height);
-        [parentLayer addSublayer:videoLayer];
-        [parentLayer addSublayer:aLayer];
-        
-        //水印动画
-        CABasicAnimation *animation = [CABasicAnimation animationWithKeyPath:@"opacity"];
-        [animation setDuration:0.5];
-        [animation setFromValue:[NSNumber numberWithFloat:1.0]];
-        [animation setToValue:[NSNumber numberWithFloat:0.3]];
-        [animation setBeginTime:2];
-        [animation setRepeatCount:1000000];
-        animation.autoreverses = YES;
-        [animation setFillMode:kCAFillModeForwards];
-        [subtitle1Text addAnimation:animation forKey:@"animateOpacity"];
-        
-        
-        _videoComp.animationTool = [AVVideoCompositionCoreAnimationTool videoCompositionCoreAnimationToolWithPostProcessingAsVideoLayer:videoLayer inLayer:parentLayer];
-        AVMutableVideoCompositionInstruction* instruction = [AVMutableVideoCompositionInstruction videoCompositionInstruction];
-        instruction.timeRange = CMTimeRangeMake(kCMTimeZero, [mixComposition duration]);
-        AVAssetTrack* mixVideoTrack = [[mixComposition tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
-        AVMutableVideoCompositionLayerInstruction* layerInstruction = [AVMutableVideoCompositionLayerInstruction videoCompositionLayerInstructionWithAssetTrack:mixVideoTrack];
-        instruction.layerInstructions = [NSArray arrayWithObject:layerInstruction];
-        _videoComp.instructions = [NSArray arrayWithObject: instruction];
-    }
-    return _videoComp;
-}
-
-
 - (AVMutableVideoComposition *)getVideoComposition:(AVAsset *)asset {
     AVAssetTrack *videoTrack = [[asset tracksWithMediaType:AVMediaTypeVideo] objectAtIndex:0];
     AVMutableComposition *composition = [AVMutableComposition composition];
@@ -586,7 +579,7 @@
 
 - (void)lowQuailtyWithInputURL:(NSURL *)inputURL blockHandler:(void (^)(AVAssetExportSession *session, NSURL *compressionVideoURL))handler {
     AVURLAsset *asset = [AVURLAsset URLAssetWithURL:inputURL options:nil];
-    AVAssetExportSession *session = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPresetHighestQuality];
+    AVAssetExportSession *session = [[AVAssetExportSession alloc] initWithAsset:asset presetName:AVAssetExportPreset1280x720];
     NSString *path = [NSString stringWithFormat:@"%@VideoCompression/",NSTemporaryDirectory()];
     
     NSFileManager *fileManage = [[NSFileManager alloc] init];    static dispatch_once_t predicate;
